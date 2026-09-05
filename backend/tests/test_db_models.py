@@ -312,6 +312,46 @@ async def test_update_model_container_alias():
     assert m["container_alias"] == "new-alias"
 
 
+@pytest.mark.asyncio
+async def test_create_model_crash_diagnostics_default_on():
+    result = await create_model(_model_data())
+    assert result["crash_diagnostics"] is True
+
+
+@pytest.mark.asyncio
+async def test_create_model_crash_diagnostics_false():
+    data = _model_data()
+    data["crash_diagnostics"] = False
+    result = await create_model(data)
+    assert result["crash_diagnostics"] is False
+
+
+@pytest.mark.asyncio
+async def test_update_model_crash_diagnostics_toggle():
+    await create_model(_model_data())
+    await update_model("test-model-1", {"crash_diagnostics": False})
+    m = await get_model_by_id("test-model-1")
+    assert m["crash_diagnostics"] is False
+    await update_model("test-model-1", {"crash_diagnostics": True})
+    m = await get_model_by_id("test-model-1")
+    assert m["crash_diagnostics"] is True
+
+
+@pytest.mark.asyncio
+async def test_update_model_crash_diagnostics_sets_pending_restart():
+    await create_model(_model_data())
+    await update_model("test-model-1", {"crash_diagnostics": False})
+    m = await get_model_by_id("test-model-1")
+    assert m["pending_restart"] is True
+
+
+@pytest.mark.asyncio
+async def test_crash_diagnostics_in_snapshot():
+    await create_model(_model_data())
+    versions = await get_model_versions("test-model-1")
+    assert versions[0]["snapshot"]["crash_diagnostics"] is True
+
+
 # ── delete_model ───────────────────────────────────────────────────
 
 
@@ -605,6 +645,7 @@ async def test_export_models_contains_all_fields():
     assert m["environment"] == {"CUDA_VISIBLE_DEVICES": "0"}
     assert m["gpu"] == "auto"
     assert m["command_flags"] == ["--enable-metrics"]
+    assert m["crash_diagnostics"] is True
 
 
 @pytest.mark.asyncio

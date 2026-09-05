@@ -130,6 +130,7 @@ export interface Model {
   environment: Record<string, string>;
   gpu: string | null;
   command_flags: string[];
+  crash_diagnostics: boolean;
   created_at: string;
   pending_restart?: boolean;
   startup_error?: string | null;

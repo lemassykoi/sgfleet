@@ -112,6 +112,8 @@ def build_docker_run_cmd(model: dict, is_primary: bool = False) -> list[str]:
     else:
         cmd.extend(["--gpus", f"device={gpu}"])
 
+    coredumps_enabled = model.get("crash_diagnostics", True)
+
     cmd.extend(
         [
             "--shm-size",
@@ -120,6 +122,12 @@ def build_docker_run_cmd(model: dict, is_primary: bool = False) -> list[str]:
             "host",
             "--cap-add",
             "SYS_NICE",
+        ]
+    )
+    if coredumps_enabled:
+        cmd.extend(["--cap-add", "SYS_PTRACE"])
+    cmd.extend(
+        [
             "--restart",
             "unless-stopped",
             "--log-driver",
@@ -131,7 +139,13 @@ def build_docker_run_cmd(model: dict, is_primary: bool = False) -> list[str]:
         ]
     )
 
-    for key, value in env.items():
+    extra_env = {}
+    if coredumps_enabled:
+        extra_env = {
+            "CUDA_ENABLE_USER_TRIGGERED_COREDUMP": "1",
+            "CUDA_COREDUMP_DIR": "/logs/coredumps",
+        }
+    for key, value in {**extra_env, **env}.items():
         cmd.extend(["-e", f"{key}={value}"])
 
     cmd.extend(["-v", f"{MODELS_DIR}:/models"])
@@ -156,7 +170,8 @@ def build_docker_run_cmd(model: dict, is_primary: bool = False) -> list[str]:
         sglang_args.extend(shlex.quote(f) for f in command_flags)
     # pipefail ensures the exit code is sglang's, not tee's, so Docker
     # restart policy triggers correctly when the model process crashes
-    tee_cmd = f"set -o pipefail; exec {' '.join(sglang_args)} 2>&1 | tee -a '{log_path}'"
+    coredump_setup = "mkdir -p /logs/coredumps; " if coredumps_enabled else ""
+    tee_cmd = f"set -o pipefail; {coredump_setup}exec {' '.join(sglang_args)} 2>&1 | tee -a '{log_path}'"
 
     cmd.append(image)
     # Use bash (not sh) because `set -o pipefail` is a bash builtin; the

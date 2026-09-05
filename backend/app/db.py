@@ -23,6 +23,7 @@ _CONTAINER_RESTART_FIELDS = frozenset(
         "command_flags",
         "context_length",
         "max_output_length",
+        "crash_diagnostics",
     }
 )
 
@@ -172,6 +173,7 @@ async def init_db():
             (13, migrate_to_v13),
             (14, migrate_to_v14),
             (15, migrate_to_v15),
+            (16, migrate_to_v16),
         ]
         for target, fn in migrations:
             if current < target:
@@ -514,6 +516,14 @@ async def migrate_to_v15(db):
     await db.commit()
 
 
+async def migrate_to_v16(db):
+    """Add crash_diagnostics column to models (enables CUDA core dumps). Defaults on."""
+    with contextlib.suppress(Exception):
+        await db.execute("ALTER TABLE models ADD COLUMN crash_diagnostics INTEGER DEFAULT 1")
+    await db.execute("UPDATE config SET value = ? WHERE key = ?", ("16", "migration_version"))
+    await db.commit()
+
+
 async def save_startup_error(model_id: str, error: str) -> None:
     """Store the last startup error for a model."""
     async with get_db() as db:
@@ -730,6 +740,7 @@ async def get_all_models() -> list[dict]:
         d = dict(r)
         d["active"] = bool(d["active"])
         d["pending_restart"] = bool(d.get("pending_restart", 0))
+        d["crash_diagnostics"] = bool(d.get("crash_diagnostics", 1))
         d["environment"] = json.loads(d.get("environment", "{}"))
         d["command_flags"] = _normalize_command_flags(json.loads(d.get("command_flags", "[]")))
         result.append(d)
@@ -745,6 +756,7 @@ async def get_model_by_id(model_id: str) -> dict | None:
         d = dict(row)
         d["active"] = bool(d["active"])
         d["pending_restart"] = bool(d.get("pending_restart", 0))
+        d["crash_diagnostics"] = bool(d.get("crash_diagnostics", 1))
         d["environment"] = json.loads(d.get("environment", "{}"))
         d["command_flags"] = _normalize_command_flags(json.loads(d.get("command_flags", "[]")))
         return d
@@ -759,6 +771,7 @@ async def get_active_models() -> list[dict]:
         d = dict(r)
         d["active"] = True
         d["pending_restart"] = bool(d.get("pending_restart", 0))
+        d["crash_diagnostics"] = bool(d.get("crash_diagnostics", 1))
         d["environment"] = json.loads(d.get("environment", "{}"))
         d["command_flags"] = _normalize_command_flags(json.loads(d.get("command_flags", "[]")))
         result.append(d)
@@ -773,8 +786,8 @@ async def create_model(data: dict) -> dict:
         await db.execute(
             """INSERT INTO models (model_id, name, image, model_path, context_length, max_output_length,
                                    port, container_name, container_alias, model_alias, active, grace_period,
-                                   environment, gpu, command_flags)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                   environment, gpu, command_flags, crash_diagnostics)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 data["model_id"],
                 data["name"],
@@ -791,6 +804,7 @@ async def create_model(data: dict) -> dict:
                 env_json,
                 data.get("gpu", "auto"),
                 flags_json,
+                1 if data.get("crash_diagnostics", True) else 0,
             ),
         )
         await db.commit()
@@ -851,6 +865,11 @@ async def update_model(model_id: str, data: dict):
                 "UPDATE models SET command_flags = ? WHERE model_id = ?",
                 (json.dumps(_normalize_command_flags(data["command_flags"])), model_id),
             )
+        if "crash_diagnostics" in data:
+            await db.execute(
+                "UPDATE models SET crash_diagnostics = ? WHERE model_id = ?",
+                (1 if data["crash_diagnostics"] else 0, model_id),
+            )
         await db.commit()
     model = await get_model_by_id(model_id)
     if model:
@@ -891,6 +910,7 @@ async def get_user_model_access(user_id: int) -> list[dict]:
         d = dict(r)
         d["active"] = bool(d["active"])
         d["pending_restart"] = bool(d.get("pending_restart", 0))
+        d["crash_diagnostics"] = bool(d.get("crash_diagnostics", 1))
         d["environment"] = json.loads(d.get("environment", "{}"))
         d["command_flags"] = _normalize_command_flags(json.loads(d.get("command_flags", "[]")))
         result.append(d)
@@ -927,8 +947,8 @@ async def bootstrap_models_from_json(json_path: str) -> int:
                 """INSERT OR REPLACE INTO models
                     (model_id, name, image, model_path, context_length, max_output_length,
                      port, container_name, container_alias, model_alias, active, grace_period,
-                     environment, gpu, command_flags)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                     environment, gpu, command_flags, crash_diagnostics)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     mid,
                     m["name"],
@@ -945,6 +965,7 @@ async def bootstrap_models_from_json(json_path: str) -> int:
                     json.dumps(m.get("environment", {})),
                     m.get("gpu", "auto"),
                     json.dumps(_normalize_command_flags(m.get("command_flags", []))),
+                    1 if m.get("crash_diagnostics", True) else 0,
                 ),
             )
             changed_ids.append(mid)
@@ -979,6 +1000,7 @@ async def export_models_to_dict() -> list[dict]:
                 "environment": m["environment"],
                 "gpu": m["gpu"],
                 "command_flags": m["command_flags"],
+                "crash_diagnostics": m["crash_diagnostics"],
             }
         )
     return result
@@ -1002,6 +1024,7 @@ def _model_to_snapshot(m: dict) -> dict:
         "environment": m["environment"],
         "gpu": m["gpu"],
         "command_flags": m["command_flags"],
+        "crash_diagnostics": m["crash_diagnostics"],
     }
 
 
@@ -1111,6 +1134,7 @@ async def get_user_default_model(user_id: int) -> dict | None:
         d = dict(row)
         d["active"] = bool(d["active"])
         d["pending_restart"] = bool(d.get("pending_restart", 0))
+        d["crash_diagnostics"] = bool(d.get("crash_diagnostics", 1))
         d["environment"] = json.loads(d.get("environment", "{}"))
         d["command_flags"] = _normalize_command_flags(json.loads(d.get("command_flags", "[]")))
         return d

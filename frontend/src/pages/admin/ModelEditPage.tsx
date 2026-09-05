@@ -267,6 +267,7 @@ function useModelForm(model: Model | null) {
       : [{ key: "", value: "" }],
   );
   const [commandFlags, setCommandFlags] = useState<FlagPair[]>(parseFlags(model?.command_flags));
+  const [crashDiagnostics, setCrashDiagnostics] = useState(model?.crash_diagnostics ?? true);
   const [saving, setSaving] = useState(false);
 
   const buildPayload = useCallback(() => {
@@ -285,6 +286,7 @@ function useModelForm(model: Model | null) {
       gpu,
       envVars,
       commandFlags,
+      crashDiagnostics,
     });
   }, [
     modelId,
@@ -301,6 +303,7 @@ function useModelForm(model: Model | null) {
     gpu,
     envVars,
     commandFlags,
+    crashDiagnostics,
   ]);
 
   return {
@@ -332,6 +335,8 @@ function useModelForm(model: Model | null) {
     setEnvVars,
     commandFlags,
     setCommandFlags,
+    crashDiagnostics,
+    setCrashDiagnostics,
     saving,
     setSaving,
     buildPayload,
@@ -838,6 +843,25 @@ function ModelEditForm({
                   </option>
                 ))}
               </select>
+            </div>
+          )}
+
+          {(!isNew || showStep2) && (
+            <div className="flex items-start gap-2">
+              <input
+                id="crash-diagnostics"
+                type="checkbox"
+                checked={form.crashDiagnostics}
+                onChange={(e) => form.setCrashDiagnostics(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
+              />
+              <label htmlFor="crash-diagnostics" className="flex-1 cursor-pointer">
+                <div className="text-sm font-medium text-gray-900 dark:text-white">Crash diagnostics</div>
+                <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                  Captures CUDA core dumps if the model crashes (adds SYS_PTRACE and a core-dump dir). Keep on for
+                  debugging; disable for a leaner container.
+                </p>
+              </label>
             </div>
           )}
 

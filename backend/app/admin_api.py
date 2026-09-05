@@ -836,6 +836,7 @@ _REVERTABLE_FIELDS = frozenset(
         "gpu",
         "environment",
         "command_flags",
+        "crash_diagnostics",
     }
 )
 

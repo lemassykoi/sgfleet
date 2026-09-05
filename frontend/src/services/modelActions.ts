@@ -45,6 +45,7 @@ export interface ModelPayloadFields {
   gpu: string;
   envVars: EnvVar[];
   commandFlags: FlagPair[];
+  crashDiagnostics: boolean;
 }
 
 export function buildModelPayload(fields: ModelPayloadFields): Partial<Model> {
@@ -67,5 +68,6 @@ export function buildModelPayload(fields: ModelPayloadFields): Partial<Model> {
     gpu: fields.gpu === "auto" ? null : fields.gpu,
     environment: envObj,
     command_flags: serializeFlags(fields.commandFlags),
+    crash_diagnostics: fields.crashDiagnostics,
   };
 }

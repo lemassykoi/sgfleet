@@ -27,6 +27,7 @@ from app.db import (
     migrate_to_v13,
     migrate_to_v14,
     migrate_to_v15,
+    migrate_to_v16,
     verify_key,
 )
 
@@ -552,6 +553,42 @@ async def test_migrate_to_v15(bare_db, migration_base_db):
     assert ver == 15
 
 
+@pytest.mark.asyncio
+async def test_migrate_to_v16(bare_db, migration_base_db):
+    await migration_base_db()
+    async with get_db() as db:
+        all_migrations = [
+            migrate_to_v3,
+            migrate_to_v4,
+            migrate_to_v5,
+            migrate_to_v6,
+            migrate_to_v7,
+            migrate_to_v8,
+            migrate_to_v9,
+            migrate_to_v10,
+            migrate_to_v11,
+            migrate_to_v12,
+            migrate_to_v13,
+            migrate_to_v14,
+            migrate_to_v15,
+            migrate_to_v16,
+        ]
+        for m in all_migrations:
+            await m(db)
+
+    cols = await get_table_columns(bare_db, "models")
+    assert "crash_diagnostics" in cols
+
+    # Default for existing rows is 1 (on)
+    async with aiosqlite.connect(bare_db) as db, db.execute("SELECT crash_diagnostics FROM models LIMIT 1") as cur:
+        row = await cur.fetchone()
+    assert row is not None
+    assert row[0] == 1
+
+    ver = await get_migration_version(bare_db)
+    assert ver == 16
+
+
 # ---------------------------------------------------------------------------
 # Full migration chain tests
 # ---------------------------------------------------------------------------
@@ -576,11 +613,12 @@ async def test_full_migration_chain_from_v2(bare_db, migration_base_db):
             migrate_to_v13,
             migrate_to_v14,
             migrate_to_v15,
+            migrate_to_v16,
         ]:
             await m(db)
 
     ver = await get_migration_version(bare_db)
-    assert ver == 15
+    assert ver == 16
 
     expected_tables = {
         "users",
@@ -617,6 +655,7 @@ async def test_full_migration_chain_idempotent(bare_db, migration_base_db):
             migrate_to_v13,
             migrate_to_v14,
             migrate_to_v15,
+            migrate_to_v16,
         ]:
             await m(db)
 
@@ -628,11 +667,12 @@ async def test_full_migration_chain_idempotent(bare_db, migration_base_db):
             migrate_to_v11,
             migrate_to_v13,
             migrate_to_v15,
+            migrate_to_v16,
         ]:
             await m(db)
 
     ver = await get_migration_version(bare_db)
-    assert ver == 15
+    assert ver == 16
 
 
 @pytest.mark.asyncio
@@ -660,11 +700,12 @@ async def test_init_db_runs_full_migration_chain_from_v1(v1_db, bare_db):
             migrate_to_v13,
             migrate_to_v14,
             migrate_to_v15,
+            migrate_to_v16,
         ]:
             await m(db)
 
     ver = await get_migration_version(bare_db)
-    assert ver == 15
+    assert ver == 16
 
     expected_tables = {
         "users",

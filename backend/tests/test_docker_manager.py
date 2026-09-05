@@ -32,6 +32,7 @@ def _make_model(**kwargs):
         "environment": {"TEST_VAR": "value"},
         "gpu": "auto",
         "command_flags": ["--kv-cache-dtype", "fp8_e4m3"],
+        "crash_diagnostics": True,
     }
     defaults.update(kwargs)
     return defaults
@@ -61,6 +62,7 @@ class TestBuildDockerRunCmd:
         assert "host" in cmd
         assert "--cap-add" in cmd
         assert "SYS_NICE" in cmd
+        assert "SYS_PTRACE" in cmd
         assert "--privileged" not in cmd
         assert model["image"] in cmd
         # Command is now wrapped with bash -c tee wrapper
@@ -107,9 +109,60 @@ class TestBuildDockerRunCmd:
 
         assert "-e" in cmd
         e_count = cmd.count("-e")
-        assert e_count == 2
-        for val in ["VAR1=val1", "VAR2=val2"]:
+        # 2 crash-diagnostics defaults + 2 model env vars
+        assert e_count == 4
+        for val in [
+            "CUDA_ENABLE_USER_TRIGGERED_COREDUMP=1",
+            "CUDA_COREDUMP_DIR=/logs/coredumps",
+            "VAR1=val1",
+            "VAR2=val2",
+        ]:
             assert val in cmd
+
+    def test_coredumps_enabled(self):
+        from app.docker_manager import build_docker_run_cmd
+
+        model = _make_model(crash_diagnostics=True)
+        cmd = build_docker_run_cmd(model)
+
+        # ptrace cap present
+        ptrace_idx = cmd.index("SYS_PTRACE")
+        assert cmd[ptrace_idx - 1] == "--cap-add"
+        # CUDA core-dump env vars present
+        assert "CUDA_ENABLE_USER_TRIGGERED_COREDUMP=1" in cmd
+        assert "CUDA_COREDUMP_DIR=/logs/coredumps" in cmd
+        # tee wrapper creates the coredump dir
+        c_idx = cmd.index("-c")
+        assert "mkdir -p /logs/coredumps;" in cmd[c_idx + 1]
+
+    def test_coredumps_disabled(self):
+        from app.docker_manager import build_docker_run_cmd
+
+        model = _make_model(crash_diagnostics=False, environment={"VAR1": "val1"})
+        cmd = build_docker_run_cmd(model)
+
+        # none of the crash-diagnostics bits should be present
+        assert "SYS_PTRACE" not in cmd
+        assert "CUDA_ENABLE_USER_TRIGGERED_COREDUMP=1" not in cmd
+        assert "CUDA_COREDUMP_DIR=/logs/coredumps" not in cmd
+        assert "mkdir -p /logs/coredumps" not in " ".join(cmd)
+        # SYS_NICE and the model env var are still there
+        assert "SYS_NICE" in cmd
+        assert "VAR1=val1" in cmd
+        # only the single model env var, no crash defaults
+        assert cmd.count("-e") == 1
+
+    def test_coredumps_default_on_when_key_missing(self):
+        from app.docker_manager import build_docker_run_cmd
+
+        model = _make_model()
+        del model["crash_diagnostics"]
+        cmd = build_docker_run_cmd(model)
+
+        assert "SYS_PTRACE" in cmd
+        assert "CUDA_ENABLE_USER_TRIGGERED_COREDUMP=1" in cmd
+        c_idx = cmd.index("-c")
+        assert "mkdir -p /logs/coredumps;" in cmd[c_idx + 1]
 
     def test_shell_injection_escaped(self):
         from app.docker_manager import build_docker_run_cmd

@@ -178,6 +178,7 @@ async def init_test_db():
             pending_restart INTEGER DEFAULT 0,
             startup_error TEXT DEFAULT NULL,
             startup_error_at DATETIME DEFAULT NULL,
+            crash_diagnostics INTEGER DEFAULT 1,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )""")
         await db.execute("""CREATE TABLE IF NOT EXISTS user_model_access (
@@ -197,7 +198,7 @@ async def init_test_db():
         )""")
         with contextlib.suppress(Exception):
             await db.execute("ALTER TABLE users ADD COLUMN default_model_id INTEGER DEFAULT NULL REFERENCES models(id)")
-        await db.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", ("migration_version", "15"))
+        await db.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", ("migration_version", "16"))
         await db.commit()
 
 
