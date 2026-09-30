@@ -120,6 +120,31 @@ class TestRequireAdminSetupGate:
         assert exc_info.value.status_code == 401
 
 
+class TestModelHealthNoActiveModels:
+    @pytest.mark.asyncio
+    async def test_health_matches_modelhealth_shape_when_no_active_models(self, monkeypatch):
+        import app.admin_api as admin_api
+
+        async def _noop_require_admin(request):
+            return None
+
+        async def _no_active_models():
+            return []
+
+        monkeypatch.setattr(admin_api, "require_admin", _noop_require_admin)
+        monkeypatch.setattr(admin_api, "get_active_models", _no_active_models)
+
+        request = _make_request("/api/model/health")
+        result = await admin_api.get_model_health(request)
+
+        assert result["status"] == "unreachable"
+        assert result["container"] is None
+        assert result["error"] == "no_active_models"
+        assert isinstance(result["admin"]["uptime_seconds"], int | float)
+        assert isinstance(result["admin"]["memory_mb"], int)
+        assert result["last_checked"]
+
+
 class TestHfDownloaderEncryptedToken:
     @pytest.mark.asyncio
     async def test_set_and_get_hf_token(self):

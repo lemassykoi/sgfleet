@@ -1,3 +1,5 @@
+import builtins
+import io
 import json
 import os
 
@@ -920,6 +922,42 @@ async def test_bootstrap_models_creates_from_seed(bare_db, migration_base_db):
     async with aiosqlite.connect(bare_db) as db, db.execute("SELECT COUNT(*) FROM models") as cur:
         count = (await cur.fetchone())[0]
     assert count >= 1
+
+
+_real_open = builtins.open
+
+
+def _fake_empty_models_json_open(path, *args, **kwargs):
+    if str(path).endswith("models.json"):
+        return io.StringIO('{"models": []}')
+    return _real_open(path, *args, **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_models_empty_models_json_is_respected(bare_db, migration_base_db, monkeypatch):
+    await migration_base_db()
+    async with get_db() as db:
+        for m in [
+            migrate_to_v3,
+            migrate_to_v4,
+            migrate_to_v5,
+            migrate_to_v6,
+            migrate_to_v7,
+            migrate_to_v8,
+            migrate_to_v9,
+            migrate_to_v10,
+        ]:
+            await m(db)
+
+    real_exists = os.path.exists
+    monkeypatch.setattr(os.path, "exists", lambda p: str(p).endswith("models.json") or real_exists(p))
+    monkeypatch.setattr(builtins, "open", _fake_empty_models_json_open)
+    async with get_db() as db:
+        await migrate_to_v11(db)
+
+    async with aiosqlite.connect(bare_db) as db, db.execute("SELECT COUNT(*) FROM models") as cur:
+        count = (await cur.fetchone())[0]
+    assert count == 0
 
 
 @pytest.mark.asyncio

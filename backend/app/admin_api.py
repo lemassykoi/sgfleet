@@ -1355,7 +1355,25 @@ async def get_model_health(request: Request, model_id: str | None = None):
     else:
         active_models = await get_active_models()
         if not active_models:
-            return {"status": "no_active_models", "models": []}
+            try:
+                proc = psutil.Process(os.getpid())
+                admin_memory_mb = round(proc.memory_info().rss / (1024 * 1024))
+            except Exception:
+                admin_memory_mb = 0
+            return {
+                "model_id": "",
+                "status": "unreachable",
+                "server_up": False,
+                "model_loaded": False,
+                "http_latency_ms": 0,
+                "container": None,
+                "admin": {
+                    "uptime_seconds": round(time.time() - _startup_time),
+                    "memory_mb": admin_memory_mb,
+                },
+                "error": "no_active_models",
+                "last_checked": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
         m = active_models[0]
         endpoint = f"http://{m['container_alias']}:{m['port']}"
         container_name = m["container_name"]

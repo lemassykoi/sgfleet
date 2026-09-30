@@ -700,7 +700,7 @@ async def _bootstrap_models(db):
             except (json.JSONDecodeError, OSError):
                 continue
 
-    if not models_data:
+    if models_data is None:
         models_data = _get_seed_models()
 
     for m in models_data:
