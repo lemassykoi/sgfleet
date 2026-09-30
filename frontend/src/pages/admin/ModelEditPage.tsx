@@ -6,7 +6,17 @@ import { api } from "../../api/client";
 import type { Model, LocalModel, DockerImagesResponse } from "../../api/types";
 import { useToast } from "../../hooks/useToast";
 import { buildModelPayload } from "../../services/modelActions";
-import { parseFlags, type EnvVar, type FlagPair } from "../../utils/flags";
+import {
+  parseFlags,
+  canonicalEnvText,
+  envPairsToObj,
+  envTextToPairs,
+  flagsText,
+  flagsTextToPairs,
+  flagsValText,
+  type EnvVar,
+  type FlagPair,
+} from "../../utils/flags";
 import {
   SGLANG_FLAGS,
   SGLANG_FLAG_CATEGORIES,
@@ -26,11 +36,13 @@ function FieldHistoryDropdown({
   field,
   currentText,
   onSelect,
+  toText = _historyText,
 }: {
   modelId: string;
   field: string;
   currentText: string;
   onSelect: (val: string) => void;
+  toText?: (val: unknown) => string;
 }) {
   const [open, setOpen] = useState(false);
   const { data: history = [] } = useQuery({
@@ -42,12 +54,12 @@ function FieldHistoryDropdown({
   const entries = useMemo(() => {
     const seen = new Set<string>();
     return history.filter((e) => {
-      const txt = _historyText(e.value);
+      const txt = toText(e.value);
       if (seen.has(txt)) return false;
       seen.add(txt);
       return true;
     });
-  }, [history]);
+  }, [history, toText]);
 
   if (entries.length === 0) return null;
 
@@ -70,7 +82,7 @@ function FieldHistoryDropdown({
             Previous values for {field}
           </div>
           {entries.map((e, i) => {
-            const txt = _historyText(e.value);
+            const txt = toText(e.value);
             const isCurrent = txt === currentText;
             return (
               <button
@@ -138,6 +150,7 @@ function KeyValueEditor({
   placeholderValue,
   addLabel,
   helpText,
+  historySlot,
 }: {
   items: EnvVar[] | FlagPair[];
   onChange: (items: EnvVar[] | FlagPair[]) => void;
@@ -146,6 +159,7 @@ function KeyValueEditor({
   placeholderValue: string;
   addLabel: string;
   helpText?: React.ReactNode;
+  historySlot?: React.ReactNode;
 }) {
   const add = useCallback(() => onChange([...items, { key: "", value: "" }]), [items, onChange]);
   const remove = useCallback((i: number) => onChange(items.filter((_, idx) => idx !== i)), [items, onChange]);
@@ -157,7 +171,10 @@ function KeyValueEditor({
 
   return (
     <div className="col-span-3">
-      <label className={labelCls}>{label}</label>
+      <div className="flex items-center gap-1">
+        <label className={labelCls}>{label}</label>
+        {historySlot}
+      </div>
       {helpText && <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-2">{helpText}</p>}
       <div className="space-y-2">
         {items.map((item, i) => (
@@ -883,11 +900,29 @@ function ModelEditForm({
                 placeholderKey="KEY"
                 placeholderValue="VALUE"
                 addLabel="Add variable"
+                historySlot={
+                  <FieldHistoryDropdown
+                    modelId={model?.model_id || ""}
+                    field="environment"
+                    currentText={canonicalEnvText(envPairsToObj(form.envVars))}
+                    toText={canonicalEnvText}
+                    onSelect={(txt) => form.setEnvVars(envTextToPairs(txt))}
+                  />
+                }
               />
 
               <div className="col-span-3">
                 <div className="flex items-center gap-2">
-                  <label className={labelCls}>Command Flags</label>
+                  <div className="flex items-center gap-1">
+                    <label className={labelCls}>Command Flags</label>
+                    <FieldHistoryDropdown
+                      modelId={model?.model_id || ""}
+                      field="command_flags"
+                      currentText={flagsText(form.commandFlags)}
+                      toText={flagsValText}
+                      onSelect={(txt) => form.setCommandFlags(flagsTextToPairs(txt))}
+                    />
+                  </div>
                   <a
                     href="https://docs.sglang.io/docs/advanced_features/server_arguments"
                     target="_blank"

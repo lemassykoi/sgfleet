@@ -62,3 +62,28 @@ def test_client_ip_unknown_when_empty():
     mock_request.headers = {}
     mock_request.client.host = None
     assert _client_ip(mock_request) == "unknown"
+
+
+def test_coerce_value_environment_json_string():
+    from app.admin_api import _coerce_value
+
+    assert _coerce_value("environment", '{"CUDA_VISIBLE_DEVICES": "0"}') == {"CUDA_VISIBLE_DEVICES": "0"}
+
+
+def test_coerce_value_command_flags_json_string():
+    from app.admin_api import _coerce_value
+
+    assert _coerce_value("command_flags", '["--context-length", "170124"]') == ["--context-length", "170124"]
+
+
+def test_coerce_value_environment_invalid_json_passthrough():
+    from app.admin_api import _coerce_value
+
+    assert _coerce_value("environment", "not-json") == "not-json"
+
+
+def test_environment_and_command_flags_are_revertable():
+    from app.admin_api import _REVERTABLE_FIELDS
+
+    assert "environment" in _REVERTABLE_FIELDS
+    assert "command_flags" in _REVERTABLE_FIELDS

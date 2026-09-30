@@ -594,6 +594,26 @@ async def test_model_versions_for_field_environment_dedup():
 
 
 @pytest.mark.asyncio
+async def test_model_versions_for_field_command_flags_dedup():
+    await create_model(_model_data())
+    await update_model("test-model-1", {"command_flags": ["--context-length", "170124"]})
+    await update_model("test-model-1", {"command_flags": ["--context-length", "170124"]})
+    field_vers = await get_model_versions_for_field("test-model-1", "command_flags")
+    vals = [v["value"] for v in field_vers if v["value"] == ["--context-length", "170124"]]
+    assert len(vals) == 1
+
+
+@pytest.mark.asyncio
+async def test_model_version_snapshots_capture_flags_and_env():
+    await create_model(_model_data())
+    await update_model("test-model-1", {"command_flags": ["--tp", "2"], "environment": {"A": "1"}})
+    versions = await get_model_versions("test-model-1")
+    latest = versions[0]["snapshot"]
+    assert latest["command_flags"] == ["--tp", "2"]
+    assert latest["environment"] == {"A": "1"}
+
+
+@pytest.mark.asyncio
 async def test_model_versions_for_field_context_length():
     await create_model(_model_data())
     await update_model("test-model-1", {"context_length": 8192})
