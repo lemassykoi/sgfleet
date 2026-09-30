@@ -2,7 +2,12 @@ FROM python:3.12-slim
 WORKDIR /app
 RUN apt-get update && apt-get install -y curl docker.io logrotate \
   && mkdir -p /usr/lib/docker/cli-plugins \
-  && curl -fsSL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
+  && case "$(dpkg --print-architecture)" in \
+       amd64) COMPOSE_ARCH=linux-x86_64 ;; \
+       arm64) COMPOSE_ARCH=linux-aarch64 ;; \
+       *) echo "unsupported architecture: $(dpkg --print-architecture)" && exit 1 ;; \
+     esac \
+  && curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-${COMPOSE_ARCH}" \
     -o /usr/lib/docker/cli-plugins/docker-compose \
   && chmod +x /usr/lib/docker/cli-plugins/docker-compose \
   && rm -rf /var/lib/apt/lists/*
