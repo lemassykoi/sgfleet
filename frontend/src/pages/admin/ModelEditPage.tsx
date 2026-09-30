@@ -371,11 +371,11 @@ export default function ModelEditPage() {
 
   const modelLoaded = !modelsPending;
 
-  const { mutateAsync: startModel } = useMutation({
-    mutationFn: (id: string) => api.startModel(id),
+  const { mutateAsync: restartModel } = useMutation({
+    mutationFn: (id: string) => api.restartModel(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["models"] });
-      showToast("Model started");
+      showToast("Model restarted");
     },
     onError: (e: Error) => showToast(e.message),
   });
@@ -463,7 +463,7 @@ export default function ModelEditPage() {
                 type="button"
                 onClick={async () => {
                   try {
-                    await startModel(restartModal.modelId);
+                    await restartModel(restartModal.modelId);
                   } catch (e) {
                     showToast(`Restart failed: ${(e as Error).message}`);
                     return;

@@ -53,6 +53,9 @@ from .docker_manager import (
     get_container_status,
 )
 from .docker_manager import (
+    restart_model as docker_restart_model,
+)
+from .docker_manager import (
     start_model as docker_start_model,
 )
 from .docker_manager import (
@@ -632,6 +635,29 @@ async def start_model_endpoint(request: Request, model_id: str):
         raise
     await reload_cache()
     return {"started": model_id}
+
+
+@router.post("/models/{model_id}/restart")
+async def restart_model_endpoint(request: Request, model_id: str):
+    await require_admin(request)
+    m = await get_model_by_id(model_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Model not found")
+    mark_not_ready(model_id)
+    active = await get_active_models()
+    is_primary = bool(active) and active[0]["model_id"] == model_id
+    try:
+        await docker_restart_model(m, is_primary=is_primary)
+        mark_ready(model_id)
+    except Exception:
+        mark_not_ready(model_id)
+        raise
+    await set_pending_restart(model_id, False)
+    await reload_cache()
+    asyncio.create_task(
+        audit_log.log_admin_action("restart_model", None, json.dumps({"model_id": model_id}), _client_ip(request))
+    )
+    return {"restarted": model_id}
 
 
 @router.post("/models/{model_id}/stop")

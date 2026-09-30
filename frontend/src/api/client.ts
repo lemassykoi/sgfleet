@@ -168,6 +168,8 @@ export const api = {
   deleteModel: (modelId: string) => apiFetch<{ deleted: string }>(`/api/models/${modelId}`, { method: "DELETE" }),
   startModel: (modelId: string) => apiFetch<{ started: string }>(`/api/models/${modelId}/start`, { method: "POST" }),
   stopModel: (modelId: string) => apiFetch<{ stopped: string }>(`/api/models/${modelId}/stop`, { method: "POST" }),
+  restartModel: (modelId: string) =>
+    apiFetch<{ restarted: string }>(`/api/models/${modelId}/restart`, { method: "POST" }),
   toggleModel: (modelId: string) =>
     apiFetch<{ model_id: string; active: boolean }>(`/api/models/${modelId}/toggle`, { method: "POST" }),
   getModelUsers: (modelId: string) => apiFetch<{ users: User[] }>(`/api/models/${modelId}/users`),

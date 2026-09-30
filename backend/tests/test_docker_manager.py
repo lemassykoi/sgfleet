@@ -303,6 +303,120 @@ class TestStartModel:
             await start_model(_make_model())
 
 
+class TestRestartModel:
+    @pytest.mark.asyncio
+    async def test_restart_recreates_running_container(self):
+        """Regression for #27: restart must replace a running container.
+
+        ``docker run`` flags (image, env, command flags, port) are fixed at
+        container creation, so a restart has to remove the old container first
+        even when it is running.
+        """
+        from app.docker_manager import ModelError, restart_model
+
+        calls: list[list[str]] = []
+
+        async def mock_run(cmd):
+            cmd = list(cmd)
+            calls.append(cmd)
+            if "inspect" in cmd:
+                # Container was removed by the stop step, so it no longer exists.
+                raise ModelError("No such container")
+            return ""
+
+        async def mock_wait(endpoint, timeout, label=""):
+            return None
+
+        with (
+            patch("app.docker_manager._run", mock_run),
+            patch("app.docker_manager._wait_for_endpoint", mock_wait),
+            patch("app.db.clear_startup_error", AsyncMock()),
+            patch("app.db.save_startup_error", AsyncMock()),
+            patch("app.db.set_pending_restart", AsyncMock()),
+        ):
+            await restart_model(_make_model())
+
+        stop_call = ["docker", "stop", "-t", "10", "sgfleet-test-model"]
+        rm_call = ["docker", "rm", "-f", "sgfleet-test-model"]
+        assert stop_call in calls
+        assert rm_call in calls
+
+        run_calls = [c for c in calls if c[:2] == ["docker", "run"]]
+        assert len(run_calls) == 1
+        assert "sgfleet-test-model" in run_calls[0]
+        # Teardown must happen before the fresh container is created.
+        assert calls.index(rm_call) < calls.index(run_calls[0])
+
+    @pytest.mark.asyncio
+    async def test_restart_marks_model_not_ready_on_health_failure(self):
+        from app.docker_manager import ModelError, restart_model
+
+        async def mock_run(cmd):
+            return ""
+
+        async def mock_wait(endpoint, timeout, label=""):
+            raise ModelError("health timeout")
+
+        set_pending = AsyncMock()
+        with (
+            patch("app.docker_manager._run", mock_run),
+            patch("app.docker_manager._wait_for_endpoint", mock_wait),
+            patch("app.db.clear_startup_error", AsyncMock()),
+            patch("app.db.save_startup_error", AsyncMock()),
+            patch("app.db.set_pending_restart", set_pending),
+            pytest.raises(ModelError),
+        ):
+            await restart_model(_make_model())
+
+        # The new config never became healthy, so it must stay "pending".
+        set_pending.assert_not_awaited()
+
+
+class TestPendingRestartClearing:
+    @pytest.mark.asyncio
+    async def test_fresh_start_clears_pending_restart(self):
+        from app.docker_manager import ModelError, start_model
+
+        async def mock_run(cmd):
+            if "inspect" in cmd:
+                raise ModelError("not found")
+            return ""
+
+        set_pending = AsyncMock()
+        with (
+            patch("app.docker_manager._run", mock_run),
+            patch("app.docker_manager._wait_for_endpoint", AsyncMock()),
+            patch("app.db.clear_startup_error", AsyncMock()),
+            patch("app.db.save_startup_error", AsyncMock()),
+            patch("app.db.set_pending_restart", set_pending),
+        ):
+            await start_model(_make_model())
+
+        set_pending.assert_awaited_once_with("test-model", False)
+
+    @pytest.mark.asyncio
+    async def test_start_skipping_running_container_keeps_pending_restart(self):
+        """The running container still runs the old config, so keep the flag."""
+        from app.docker_manager import start_model
+
+        async def mock_run(cmd):
+            if "inspect" in cmd:
+                return "running"
+            return ""
+
+        set_pending = AsyncMock()
+        with (
+            patch("app.docker_manager._run", mock_run),
+            patch("app.docker_manager._wait_for_endpoint", AsyncMock()),
+            patch("app.db.clear_startup_error", AsyncMock()),
+            patch("app.db.save_startup_error", AsyncMock()),
+            patch("app.db.set_pending_restart", set_pending),
+        ):
+            await start_model(_make_model())
+
+        set_pending.assert_not_awaited()
+
+
 class TestEnsureModelsSync:
     @pytest.mark.asyncio
     async def test_sync_starts_active(self, switch_dir):

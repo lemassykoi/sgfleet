@@ -190,7 +190,7 @@ async def start_model(model: dict, is_primary: bool = False) -> None:
     Raises ModelError if the container fails to start or the health check
     doesn't succeed within the timeout.
     """
-    from .db import clear_startup_error, save_startup_error
+    from .db import clear_startup_error, save_startup_error, set_pending_restart
 
     container_name = model["container_name"]
     model_id = model["model_id"]
@@ -250,6 +250,14 @@ async def start_model(model: dict, is_primary: bool = False) -> None:
         logger.error("Model %s health check failed: %s", container_name, error_msg)
         await save_startup_error(model_id, f"Health check failed: {error_msg}")
         raise
+
+    # A freshly created container runs the config currently stored in the DB,
+    # so any pending-restart request has now been applied.
+    if not already_running:
+        try:
+            await set_pending_restart(model_id, False)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Failed to clear pending_restart for %s: %s", model_id, e)
 
 
 async def _log_config_version(model: dict):
@@ -312,6 +320,20 @@ async def stop_model(model: dict, grace_period: int | None = None) -> None:
     gp = grace_period if grace_period is not None else model.get("grace_period", 10)
     logger.info("Stopping model container: %s", container_name)
     await _stop_container(container_name, gp)
+
+
+async def restart_model(model: dict, is_primary: bool = False) -> None:
+    """Force-recreate a model container so stored config changes take effect.
+
+    ``start_model`` deliberately skips ``docker run`` when the container is
+    already running, which means it can never apply new run flags, image, env
+    vars or port. Docker only reads those at container creation, so a restart
+    must remove the old container first.
+    """
+    container_name = model["container_name"]
+    logger.info("Restarting model container: %s", container_name)
+    await stop_model(model)
+    await start_model(model, is_primary)
 
 
 async def ensure_models_sync(all_models: list[dict], mark_ready_fn=None, mark_not_ready_fn=None) -> set[str]:

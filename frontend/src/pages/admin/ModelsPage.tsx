@@ -123,6 +123,15 @@ export default function ModelsPage() {
     onError: (e: Error) => showToast(e.message),
   });
 
+  const { mutateAsync: restartModel } = useMutation({
+    mutationFn: (modelId: string) => api.restartModel(modelId),
+    onSuccess: () => {
+      refreshInvalidate();
+      showToast("Model restarted");
+    },
+    onError: (e: Error) => showToast(e.message),
+  });
+
   const { mutateAsync: toggleModel } = useMutation({
     mutationFn: (modelId: string) => api.toggleModel(modelId),
     onSuccess: () => {
@@ -428,12 +437,10 @@ export default function ModelsPage() {
                           <button
                             onClick={async () => {
                               try {
-                                showToast(`Starting ${m.name}…`);
-                                await startModel(m.model_id);
-                                showToast(`${m.name} restarted`);
-                                refreshInvalidate();
-                              } catch (e) {
-                                showToast(`Restart failed: ${(e as Error).message}`);
+                                showToast(`Restarting ${m.name}…`);
+                                await restartModel(m.model_id);
+                              } catch {
+                                /* surfaced by the mutation's onError toast */
                               }
                             }}
                             className="ml-1 text-amber-800 dark:text-amber-200 hover:text-amber-900 dark:hover:text-amber-100 underline"
