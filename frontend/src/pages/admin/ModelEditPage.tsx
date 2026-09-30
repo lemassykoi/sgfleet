@@ -707,6 +707,11 @@ function ModelEditForm({
                   </option>
                 ))}
               </select>
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+                Used for generated client configs only (Cursor, Continue, Cline, Claude Code). To change the actual
+                server context window, add a <code>--context-length</code> flag under Command Flags — that flag is what
+                the SGLang server uses; if both are set, the flag wins and this field only affects client configs.
+              </p>
             </div>
           )}
           {(!isNew || showStep2) && (
@@ -732,6 +737,10 @@ function ModelEditForm({
                   </option>
                 ))}
               </select>
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+                Used for generated client configs only. To enforce a server-side cap, add a{" "}
+                <code>--max-total-tokens</code> / related flag under Command Flags.
+              </p>
             </div>
           )}
           <div className={!isNew || showStep2 ? "" : "hidden"}>
